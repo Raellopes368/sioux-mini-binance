@@ -1,14 +1,13 @@
-import { Ionicons } from "@expo/vector-icons";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "expo-router";
 import { Controller, useForm } from "react-hook-form";
-import { Pressable, Text, View } from "react-native";
+import { Image, Pressable, Text, ToastAndroid, View } from "react-native";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Screen } from "@/components/ui/Screen";
-import { colors } from "@/constants/colors";
+import { useAuth } from "@/contexts/auth-context";
 
 const loginSchema = z.object({
   email: z.email("Informe um e-mail válido"),
@@ -18,11 +17,11 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginScreen() {
+  const { signIn, isLoading } = useAuth();
   const {
     control,
     handleSubmit,
-    setError,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -33,11 +32,13 @@ export default function LoginScreen() {
 
   const onSubmit = handleSubmit(async ({ email, password }) => {
     try {
-      console.log({ email, password });
-    } catch {
-      setError("password", {
-        message: "Não foi possível entrar. Tente novamente.",
-      });
+      await signIn({ email, password });
+    } catch (err) {
+      ToastAndroid.showWithGravity(
+        "Não foi possível entrar. Tente novamente.",
+        ToastAndroid.SHORT,
+        ToastAndroid.BOTTOM,
+      );
     }
   });
 
@@ -45,11 +46,13 @@ export default function LoginScreen() {
     <Screen scroll edges={["top", "left", "right", "bottom"]}>
       <View className="flex-1 justify-center py-10">
         <View className="mb-10 items-center">
-          <View className="mb-5 h-20 w-20 items-center justify-center rounded-full bg-bitcoin/15">
-            <Ionicons name="logo-bitcoin" size={42} color={colors.bitcoin} />
-          </View>
+          <Image
+            source={require("@/assets/images/logo.png")}
+            className="h-20 w-20"
+            resizeMode="contain"
+          />
           <Text className="text-3xl font-semibold text-text-primary">
-            Sioux Trade
+            Liqd Binance
           </Text>
           <Text className="mt-2 text-center text-base text-text-secondary">
             Negocie Bitcoin de forma simples e segura
@@ -69,7 +72,7 @@ export default function LoginScreen() {
                 onBlur={onBlur}
                 keyboardType="email-address"
                 autoComplete="email"
-                placeholder="email@exemplo.com"
+                placeholder="exemplo@email.com"
                 error={errors.email?.message}
               />
             )}
@@ -95,8 +98,10 @@ export default function LoginScreen() {
         <Button
           label="Entrar"
           className="mt-6"
-          loading={isSubmitting}
-          onPress={onSubmit}
+          loading={isLoading}
+          onPress={() => {
+            void onSubmit();
+          }}
         />
 
         <View className="mt-6 flex-row items-center justify-center">

@@ -1,13 +1,14 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link } from "expo-router";
 import { Controller, useForm } from "react-hook-form";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, ToastAndroid, View } from "react-native";
 import { z } from "zod";
 
 import { Button } from "@/components/ui/Button";
 import { Header } from "@/components/ui/Header";
 import { Input } from "@/components/ui/Input";
 import { Screen } from "@/components/ui/Screen";
+import { useAuth } from "@/contexts/auth-context";
 
 const registerSchema = z
   .object({
@@ -24,11 +25,12 @@ const registerSchema = z
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
 export default function RegisterScreen() {
+  const { signUp, isLoading } = useAuth();
   const {
     control,
     handleSubmit,
     setError,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
@@ -39,15 +41,29 @@ export default function RegisterScreen() {
     },
   });
 
-  const onSubmit = handleSubmit(async ({ name, email, password }) => {
-    try {
-      console.log({ name, email, password });
-    } catch {
-      setError("email", {
-        message: "Não foi possível criar a conta. Tente novamente.",
-      });
-    }
-  });
+  const onSubmit = handleSubmit(
+    async ({ name, email, password, confirmPassword }) => {
+      try {
+        await signUp({
+          name,
+          email,
+          password,
+          password_confirmation: confirmPassword,
+        });
+        ToastAndroid.showWithGravity(
+          "Conta criada com sucesso!",
+          ToastAndroid.SHORT,
+          ToastAndroid.BOTTOM,
+        );
+      } catch {
+        ToastAndroid.showWithGravity(
+          "Não foi possível criar a conta. Tente novamente.",
+          ToastAndroid.SHORT,
+          ToastAndroid.BOTTOM,
+        );
+      }
+    },
+  );
 
   return (
     <Screen scroll edges={["top", "left", "right", "bottom"]}>
@@ -86,7 +102,7 @@ export default function RegisterScreen() {
               onBlur={onBlur}
               keyboardType="email-address"
               autoComplete="email"
-              placeholder="voce@email.com"
+              placeholder="exemplo@email.com"
               error={errors.email?.message}
             />
           )}
@@ -128,8 +144,10 @@ export default function RegisterScreen() {
       <Button
         label="Criar conta"
         className="mt-6"
-        loading={isSubmitting}
-        onPress={onSubmit}
+        loading={isLoading}
+        onPress={() => {
+          void onSubmit();
+        }}
       />
 
       <View className="mt-6 flex-row items-center justify-center">
