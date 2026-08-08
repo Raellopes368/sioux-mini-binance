@@ -1,429 +1,93 @@
 # Mini Binance
 
-Aplicação mobile simplificada para simulação de compra e venda de Bitcoin, desenvolvida como teste técnico.
-
-O projeto é composto por uma API REST desenvolvida com Laravel e uma aplicação mobile desenvolvida com React Native + Expo.
-
-## Tecnologias
-
-### Backend
-
-- PHP
-- Laravel
-- PostgreSQL
-- Laravel Sanctum
-- Redis
-- Docker
-
-### Mobile
-
-- React Native
-- Expo
-- Expo Router
-- TypeScript
-- NativeWind
-
----
-
-## Estrutura do projeto
+Plataforma simplificada de trading de Bitcoin (teste técnico), com API Laravel e app React Native + Expo.
 
 ```text
 .
-├── backend/        # API REST Laravel
-├── mobile/         # Aplicação React Native / Expo
+├── backend/           # API REST Laravel
+├── mobile/            # React Native / Expo
 ├── docker-compose.yml
 └── README.md
 ```
 
----
+## Stack
 
-# Requisitos
-
-## 1. Autenticação
-
-A aplicação deve permitir:
-
-- Cadastro de usuário
-- Login
-- Logout
-- Proteção dos endpoints autenticados
-
-A autenticação da API será realizada utilizando Laravel Sanctum.
+| Camada | Tecnologias |
+|--------|-------------|
+| Backend | PHP 8.4+, Laravel 13, PostgreSQL, Sanctum, Redis, Docker |
+| Mobile | React Native, Expo, TypeScript, NativeWind |
 
 ---
 
-## 2. Carteira
+## Requisitos cobertos
 
-Cada usuário possui uma carteira individual.
+1. Autenticação com Sanctum (`register`, `login`, `logout`, `me`)
+2. Carteira automática no cadastro (BRL `10000.00`, BTC `0`)
+3. Preço fake dinâmico de BTC com cache Redis (TTL 10s)
+4. Compra e venda atômicas com `lockForUpdate()`
+5. Histórico de transações paginado
+6. Precisão decimal com BCMath
+7. Testes automatizados (Pest)
+8. Docker Compose (app + PostgreSQL + Redis)
 
-Ao criar uma nova conta, a carteira deve iniciar com:
+---
+
+## Arquitetura do backend
 
 ```text
-BRL: R$ 10.000,00
-BTC: 0 BTC
+backend/app/
+├── Enums/TransactionType.php
+├── Exceptions/InsufficientBalanceException.php
+├── Http/
+│   ├── Controllers/   # Controllers finos
+│   ├── Requests/      # Validação estrutural
+│   └── Resources/     # Respostas JSON
+├── Models/
+├── Services/
+│   ├── AuthService.php
+│   ├── BitcoinPriceService.php
+│   └── TradeService.php
+└── Support/Money.php  # Aritmética BCMath
 ```
 
-A carteira deve armazenar separadamente:
-
-- Saldo em BRL
-- Saldo em BTC
-
-Endpoint:
-
-```http
-GET /api/wallet
-```
+Controllers recebem a request, chamam services e devolvem Resources.  
+Regras financeiras ficam em `TradeService`. Preço/cache ficam em `BitcoinPriceService`.
 
 ---
 
-## 3. Mercado Bitcoin
+## Decisões técnicas
 
-A aplicação deve disponibilizar o preço atual simulado do Bitcoin.
+1. **DECIMAL no PostgreSQL** — `float`/`double` causam erros de arredondamento. Usamos `decimal(15,2)` para BRL/preço e `decimal(20,8)` para BTC, com BCMath (`bcadd`, `bcsub`, `bcmul`, `bcdiv`, `bccomp`) em `App\Support\Money`.
+2. **DB transaction** — débito, crédito e registro da transaction precisam ser atômicos; falha implica rollback completo.
+3. **`lockForUpdate()`** — impede race conditions em compras/vendas concorrentes sobre a mesma wallet (pessimistic locking).
+4. **Redis para preço fake** — `Cache::remember` com TTL de 10s mantém o mesmo preço para market e trades durante a janela.
+5. **Servidor é fonte da verdade** — o cliente envia apenas a intenção (`amount`). Usuário, wallet, preço e cálculos vêm do backend.
 
-Endpoint:
+### Market público
 
-```http
-GET /api/market/btc
-```
+`GET /api/market/btc` é **público**. O enunciado não exige autenticação e o preço é simulado; manter público simplifica o consumo e a avaliação.
 
-O preço deve ser dinâmico.
+### Concorrência nos testes
 
-Como referência, o preço simulado pode variar entre:
-
-```text
-R$ 200.000,00
-R$ 300.000,00
-```
-
-O Redis pode ser utilizado para manter temporariamente o preço atual do Bitcoin, evitando gerar um novo valor em cada requisição.
+Em PostgreSQL, o teste verifica SQL com `FOR UPDATE`. O grammar do SQLite (usado em `php artisan test`) ignora `FOR UPDATE`; por isso esse assert é skipped no SQLite, e há um teste sequencial que prova que o segundo gasto não ultrapassa o saldo. Em produção/Docker usa-se PostgreSQL.
 
 ---
 
-## 4. Compra de Bitcoin
+## Instalação com Docker (recomendado)
 
-O usuário deve conseguir converter parte do seu saldo BRL em BTC utilizando o preço atual do Bitcoin.
-
-Endpoint:
-
-```http
-POST /api/trade/buy
-```
-
-Fluxo esperado:
-
-```text
-Usuário informa valor em BRL
-        ↓
-API obtém preço atual do BTC
-        ↓
-Valida saldo disponível
-        ↓
-Calcula quantidade de BTC
-        ↓
-Debita saldo BRL
-        ↓
-Credita saldo BTC
-        ↓
-Registra transação
-```
-
-A operação deve ser atômica.
-
-Caso qualquer etapa falhe, nenhuma alteração parcial deve permanecer na carteira.
-
----
-
-## 5. Venda de Bitcoin
-
-O usuário deve conseguir vender BTC e receber o valor correspondente em BRL.
-
-Endpoint:
-
-```http
-POST /api/trade/sell
-```
-
-Fluxo esperado:
-
-```text
-Usuário informa quantidade de BTC
-        ↓
-API obtém preço atual
-        ↓
-Valida saldo BTC
-        ↓
-Calcula valor em BRL
-        ↓
-Debita BTC
-        ↓
-Credita BRL
-        ↓
-Registra transação
-```
-
-A operação também deve ser atômica.
-
----
-
-## 6. Histórico de transações
-
-Todas as operações de compra e venda devem ser registradas.
-
-Endpoint:
-
-```http
-GET /api/transactions
-```
-
-Cada transação deve armazenar informações como:
-
-- Tipo da operação (`BUY` ou `SELL`)
-- Quantidade de BTC
-- Valor em BRL
-- Preço do BTC no momento da operação
-- Data e hora
-
----
-
-# Concorrência e consistência
-
-As operações financeiras devem garantir consistência mesmo quando múltiplas requisições forem realizadas simultaneamente.
-
-Compra e venda devem utilizar transações de banco de dados.
-
-A carteira deve ser bloqueada durante a operação para evitar condições de corrida.
-
-Exemplo conceitual:
-
-```php
-DB::transaction(function () {
-    // Wallet retrieved using lockForUpdate()
-});
-```
-
-Isso evita situações em que duas operações simultâneas utilizem o mesmo saldo disponível.
-
----
-
-# Banco de dados
-
-A estrutura principal é composta pelas seguintes entidades:
-
-```text
-User
- │
- ├──── Wallet
- │
- └──── Transactions
-```
-
-## users
-
-Responsável pelos dados e autenticação do usuário.
-
-## wallets
-
-Armazena:
-
-```text
-user_id
-brl_balance
-btc_balance
-```
-
-## transactions
-
-Armazena:
-
-```text
-user_id
-type
-btc_amount
-brl_amount
-btc_price
-created_at
-```
-
-Valores financeiros não devem utilizar tipos de ponto flutuante para persistência.
-
----
-
-# Aplicação Mobile
-
-O aplicativo deve possuir as principais áreas:
-
-## Autenticação
-
-- Login
-- Cadastro
-
-## Dashboard
-
-Exibe:
-
-- Saldo total
-- Saldo em BRL
-- Saldo em BTC
-- Preço atual do Bitcoin
-- Ações para compra e venda
-- Transações recentes
-
-## Compra
-
-Permite:
-
-- Informar valor em BRL
-- Visualizar quantidade estimada de BTC
-- Confirmar operação
-
-## Venda
-
-Permite:
-
-- Informar quantidade de BTC
-- Visualizar valor estimado em BRL
-- Confirmar operação
-
-## Histórico
-
-Exibe as operações de compra e venda realizadas pelo usuário.
-
----
-
-# Navegação Mobile
-
-A aplicação utiliza Expo Router.
-
-Estrutura principal:
-
-```text
-Root Stack
-│
-├── Auth
-│   ├── Login
-│   └── Register
-│
-└── Application
-    │
-    ├── Bottom Tabs
-    │   ├── Home
-    │   ├── Trade
-    │   ├── Transactions
-    │   └── Profile
-    │
-    ├── Buy Bitcoin
-    ├── Sell Bitcoin
-    ├── Trade Success
-    └── Transaction Details
-```
-
----
-
-# Executando o projeto
-
-## Pré-requisitos
-
-É necessário possuir:
-
-- Docker
-- Docker Compose
-- Node.js
-- npm
-- Expo Go ou Development Build
-
----
-
-## Backend
-
-Entre na pasta:
+Na raiz do repositório:
 
 ```bash
-cd backend
+docker compose up -d --build
 ```
 
-Copie as variáveis de ambiente:
+Isso sobe:
 
-```bash
-cp .env.example .env
-```
+- API Laravel em `http://localhost:8000`
+- PostgreSQL (`liqd` / `liqd` / `secret`)
+- Redis
 
-Instale as dependências:
-
-```bash
-composer install
-```
-
-Gere a chave da aplicação:
-
-```bash
-php artisan key:generate
-```
-
-Execute as migrations:
-
-```bash
-php artisan migrate
-```
-
-Inicie o servidor:
-
-```bash
-php artisan serve
-```
-
-A API ficará disponível por padrão em:
-
-```text
-http://localhost:8000
-```
-
----
-
-## Mobile
-
-Entre na pasta:
-
-```bash
-cd mobile
-```
-
-Instale as dependências:
-
-```bash
-npm install
-```
-
-Inicie o Expo:
-
-```bash
-npx expo start
-```
-
-Para limpar o cache:
-
-```bash
-npx expo start --clear
-```
-
----
-
-# Docker
-
-O ambiente deverá disponibilizar os serviços necessários para execução da API, incluindo:
-
-```text
-Laravel
-PostgreSQL
-Redis
-```
-
-Para iniciar os containers:
-
-```bash
-docker compose up -d
-```
-
-Para encerrar:
+O entrypoint executa `migrate` e seed do usuário demo.
 
 ```bash
 docker compose down
@@ -431,75 +95,278 @@ docker compose down
 
 ---
 
-# Testes
+## Instalação local (sem Docker da app)
 
-Os testes automatizados devem priorizar as regras financeiras da aplicação.
-
-Principais cenários:
-
-- Criação da carteira com saldo inicial correto
-- Compra de BTC
-- Atualização correta dos saldos após compra
-- Bloqueio de compra com saldo BRL insuficiente
-- Venda de BTC
-- Atualização correta dos saldos após venda
-- Bloqueio de venda com saldo BTC insuficiente
-- Registro de transações
-- Proteção de endpoints autenticados
-- Consistência das operações financeiras
-
-Para executar os testes do backend:
+Pré-requisitos: PHP 8.4+, Composer, PostgreSQL, Redis, extensão `bcmath` e `redis`/`phpredis`.
 
 ```bash
-php artisan test
+cd backend
+cp .env.example .env
+composer install
+php artisan key:generate
 ```
 
+Ajuste `.env` se necessário (`DB_*`, `REDIS_*`, `CACHE_STORE=redis`).
+
+```bash
+php artisan migrate
+php artisan db:seed
+php artisan serve
+```
+
+API: `http://localhost:8000`
+
 ---
 
-# Diferenciais implementados / planejados
+## Testes e qualidade
 
-- Redis para cache do preço do Bitcoin
-- Testes automatizados
-- Controle de concorrência nas operações financeiras
-- Docker
-- Arquitetura preparada para integração com uma fonte externa de preços
-- Interface mobile responsiva e componentizada
+```bash
+cd backend
+php artisan test
+./vendor/bin/pint
+php artisan route:list
+```
+
+Os testes usam SQLite in-memory e `CACHE_STORE=array` (`phpunit.xml`).
 
 ---
 
-# API
+## Credenciais demo
 
-Resumo dos principais endpoints:
+| Campo | Valor |
+|-------|--------|
+| Email | `demo@example.com` |
+| Senha | `password` |
+
+Apenas para avaliação local. Não são credenciais reais.
+
+---
+
+## Autenticação
+
+- Registro/login retornam `token` Bearer (Sanctum personal access token).
+- Endpoints privados: header `Authorization: Bearer {token}`.
+- Logout revoga o token atual.
+- Senhas usam hash do Laravel; nunca são retornadas na API.
+
+---
+
+## Endpoints
+
+### Públicos
+
+| Método | Path | Descrição |
+|--------|------|-----------|
+| POST | `/api/register` | Cadastro + wallet inicial |
+| POST | `/api/login` | Login |
+| GET | `/api/market/btc` | Preço fake do BTC |
+
+### Autenticados (`auth:sanctum`)
+
+| Método | Path | Descrição |
+|--------|------|-----------|
+| GET | `/api/me` | Usuário autenticado |
+| POST | `/api/logout` | Revoga token atual |
+| GET | `/api/wallet` | Carteira do usuário |
+| POST | `/api/trade/buy` | Compra BTC com BRL |
+| POST | `/api/trade/sell` | Vende BTC por BRL |
+| GET | `/api/transactions` | Histórico (paginado) |
+
+### Exemplos
+
+**Register**
+
+```http
+POST /api/register
+Content-Type: application/json
+
+{
+  "name": "Israel",
+  "email": "israel@example.com",
+  "password": "password",
+  "password_confirmation": "password"
+}
+```
+
+```json
+{
+  "message": "Usuário registrado com sucesso.",
+  "token": "...",
+  "user": {
+    "id": 1,
+    "name": "Israel",
+    "email": "israel@example.com",
+    "created_at": "2026-08-08T18:00:00+00:00"
+  }
+}
+```
+
+**Wallet**
+
+```http
+GET /api/wallet
+Authorization: Bearer {token}
+```
+
+```json
+{
+  "data": {
+    "id": 1,
+    "brl_balance": "10000.00",
+    "btc_balance": "0.00000000",
+    "updated_at": "2026-08-08T18:00:00+00:00"
+  }
+}
+```
+
+**Market**
+
+```http
+GET /api/market/btc
+```
+
+```json
+{
+  "data": {
+    "symbol": "BTC",
+    "price": "250123.45",
+    "currency": "BRL",
+    "expires_at": "2026-08-08T18:35:20Z"
+  }
+}
+```
+
+`expires_at` vem do mesmo payload armazenado no Redis junto com o preço (mesmo ciclo de vida do TTL).
+
+**Buy** (`amount` = BRL; `expected_price` = cotação visualizada pelo usuário)
+
+```http
+POST /api/trade/buy
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "amount": "1000.00",
+  "expected_price": "250123.45"
+}
+```
+
+**Sell** (`amount` = BTC; `expected_price` = cotação visualizada pelo usuário)
+
+```http
+POST /api/trade/sell
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "amount": "0.00200000",
+  "expected_price": "250123.45"
+}
+```
+
+**Erro de saldo**
+
+```json
+{
+  "message": "Saldo em BRL insuficiente."
+}
+```
+
+Status: `422`
+
+**Preço alterado**
+
+```json
+{
+  "message": "O preço do Bitcoin foi atualizado.",
+  "data": {
+    "previous_price": "292713.37",
+    "current_price": "295428.91"
+  }
+}
+```
+
+Status: `409`
+
+---
+
+## Fluxos financeiros
+
+### Buy
 
 ```text
-POST   /api/register
-POST   /api/login
-POST   /api/logout
-
-GET    /api/me
-
-GET    /api/wallet
-
-GET    /api/market/btc
-
-POST   /api/trade/buy
-POST   /api/trade/sell
-
-GET    /api/transactions
+amount (BRL) + expected_price → preço Redis/serviço → compara expected_price
+→ se diferente: 409 (sem mutação) → se igual: DB::transaction
+→ wallet lockForUpdate → valida BRL → btc = brl / current_price
+→ debita BRL → credita BTC → registra BUY (btc_price = current_price) → commit
 ```
 
-Endpoints privados exigem autenticação.
+### Sell
+
+```text
+amount (BTC) + expected_price → preço Redis/serviço → compara expected_price
+→ se diferente: 409 (sem mutação) → se igual: DB::transaction
+→ wallet lockForUpdate → valida BTC → brl = btc * current_price
+→ debita BTC → credita BRL → registra SELL (btc_price = current_price) → commit
+```
+
+Escalas: BRL/preço = 2 casas; BTC = 8 casas. Saldos negativos são rejeitados.
 
 ---
 
-# Critérios principais
+## Price consistency
 
-A implementação prioriza:
+O preço simulado do BTC fica em cache Redis com TTL curto. O mobile envia, em buy/sell, o preço que o usuário visualizou e confirmou como `expected_price`.
 
-1. Correção das regras de negócio
-2. Consistência das operações financeiras
-3. Organização e qualidade do código
-4. Segurança básica
-5. Clareza da arquitetura
-6. Experiência de uso no aplicativo mobile
-7. Facilidade de execução e avaliação do projeto
+O backend:
+
+- obtém a cotação atual via `BitcoinPriceService` (fonte da verdade);
+- compara `expected_price` com essa cotação usando BCMath (`Money::compare`, escala 2);
+- **nunca** usa `expected_price` para calcular BTC/BRL nem para gravar `btc_price`;
+- se os preços diferirem, responde HTTP `409` com `previous_price` e `current_price`, sem alterar wallet nem criar transaction;
+- o cliente deve consultar a nova cotação e pedir confirmação novamente.
+
+`expected_price` é input não confiável: enviar um valor artificialmente baixo (ex.: `1.00`) apenas gera `409` enquanto a cotação do servidor for outra.
+
+---
+
+## Redis
+
+- Driver de cache padrão em produção/Docker: `redis`
+- Chave: `market:btc:price` (`config/bitcoin.php`)
+- TTL: 10 segundos
+- Payload: `{ "price": "250123.45", "expires_at": "2026-08-08T18:35:20Z" }`
+- Range: R$ 200.000,00 – R$ 300.000,00
+
+`BitcoinPriceService` centraliza geração e cache. Futuramente pode receber um provider externo sem alterar controllers.
+
+---
+
+## CORS
+
+`config/cors.php` libera `api/*` com origins `*`, adequado a token Bearer no React Native (sem cookies). Não há IP pessoal hardcoded.
+
+---
+
+## Mobile
+
+```bash
+cd mobile
+npm install
+npx expo start
+```
+
+Configure `EXPO_PUBLIC_API_URL` apontando para a API (ex.: `http://<IP-da-rede>:8000/api`).
+
+---
+
+## Variáveis relevantes (`.env`)
+
+| Variável | Exemplo |
+|----------|---------|
+| `DB_CONNECTION` | `pgsql` |
+| `DB_HOST` | `127.0.0.1` ou `postgres` |
+| `CACHE_STORE` | `redis` |
+| `REDIS_HOST` | `127.0.0.1` ou `redis` |
+| `BITCOIN_PRICE_CACHE_TTL` | `10` |
+| `WALLET_INITIAL_BRL` | `10000.00` |
