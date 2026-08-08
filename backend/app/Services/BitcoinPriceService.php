@@ -9,7 +9,7 @@ use RuntimeException;
 class BitcoinPriceService
 {
     /**
-     * @return array{price: string, expires_at: string}
+     * @return array{price: string, changePercent24h: float, expires_at: string}
      */
     public function getQuote(): array
     {
@@ -19,11 +19,18 @@ class BitcoinPriceService
         $cached = Cache::get($cacheKey);
 
         if ($this->isValidQuote($cached)) {
+            if (! isset($cached['changePercent24h']) || ! is_numeric($cached['changePercent24h'])) {
+                $cached['changePercent24h'] = $this->generateChangePercent24h();
+            } else {
+                $cached['changePercent24h'] = (float) $cached['changePercent24h'];
+            }
+
             return $cached;
         }
 
         $quote = [
             'price' => $this->generatePrice(),
+            'changePercent24h' => $this->generateChangePercent24h(),
             'expires_at' => now()->utc()->addSeconds($ttl)->toIso8601ZuluString(),
         ];
 
@@ -51,6 +58,11 @@ class BitcoinPriceService
         $priceCents = random_int($minCents, $maxCents);
 
         return Money::normalizeBrl(bcdiv((string) $priceCents, '100', Money::BRL_SCALE));
+    }
+
+    public function generateChangePercent24h(): float
+    {
+        return round(random_int(-500, 500) / 100, 2);
     }
 
     /**

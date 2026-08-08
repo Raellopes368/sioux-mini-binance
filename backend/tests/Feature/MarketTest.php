@@ -17,6 +17,9 @@ test('btc market price is within configured range', function (): void {
     expect(Money::compare($price, $max, Money::BRL_SCALE))->toBeLessThanOrEqual(0);
     expect($response->json('data.symbol'))->toBe('BTC');
     expect($response->json('data.currency'))->toBe('BRL');
+    expect($response->json('data.changePercent24h'))->toBeNumeric();
+    expect($response->json('data.changePercent24h'))->toBeGreaterThanOrEqual(-5);
+    expect($response->json('data.changePercent24h'))->toBeLessThanOrEqual(5);
     expect($response->json('data.expires_at'))->not->toBeNull();
 });
 
@@ -34,6 +37,7 @@ test('btc market price is cached during ttl', function (): void {
 
     expect($responseA->json('data.price'))->toBe($responseB->json('data.price'));
     expect($responseA->json('data.price'))->toBe($first);
+    expect($responseA->json('data.changePercent24h'))->toBe($responseB->json('data.changePercent24h'));
     expect($responseA->json('data.expires_at'))->toBe($responseB->json('data.expires_at'));
 });
 
@@ -44,6 +48,7 @@ test('btc market price returns expires_at coherent with cached quote', function 
 
     Cache::put(config('bitcoin.cache_key'), [
         'price' => '250000.00',
+        'changePercent24h' => 2.45,
         'expires_at' => $expiresAt,
     ], 10);
 
@@ -51,11 +56,13 @@ test('btc market price returns expires_at coherent with cached quote', function 
 
     $response->assertJsonPath('data.symbol', 'BTC')
         ->assertJsonPath('data.price', '250000.00')
+        ->assertJsonPath('data.changePercent24h', 2.45)
         ->assertJsonPath('data.currency', 'BRL')
         ->assertJsonPath('data.expires_at', $expiresAt);
 
     $quote = app(BitcoinPriceService::class)->getQuote();
 
     expect($quote['price'])->toBe('250000.00');
+    expect($quote['changePercent24h'])->toBe(2.45);
     expect($quote['expires_at'])->toBe($expiresAt);
 });

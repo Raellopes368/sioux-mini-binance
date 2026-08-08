@@ -12,12 +12,13 @@ class MarketPriceResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        /** @var array{price: string, expires_at: string} $quote */
+        /** @var array{price: string, changePercent24h: float|int, expires_at: string} $quote */
         $quote = $this->resource;
 
         return [
             'symbol' => 'BTC',
             'price' => $quote['price'],
+            'changePercent24h' => (float) $quote['changePercent24h'],
             'currency' => 'BRL',
             'expires_at' => $quote['expires_at'],
         ];
