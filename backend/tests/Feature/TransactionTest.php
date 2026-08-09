@@ -30,3 +30,45 @@ test('transactions endpoint returns only authenticated user records newest first
     expect($response->json('data.1.type'))->toBe(TransactionType::BUY->value);
     expect($response->json('data'))->toHaveCount(2);
 });
+
+test('transactions endpoint filters by buy type', function (): void {
+    $user = User::factory()->create();
+
+    $buy = Transaction::factory()->for($user)->buy()->create();
+    Transaction::factory()->for($user)->sell()->create();
+
+    Sanctum::actingAs($user);
+
+    $response = $this->getJson('/api/transactions?type=BUY')->assertOk();
+
+    $ids = collect($response->json('data'))->pluck('id')->all();
+
+    expect($ids)->toBe([$buy->id]);
+    expect($response->json('data.0.type'))->toBe(TransactionType::BUY->value);
+});
+
+test('transactions endpoint filters by sell type', function (): void {
+    $user = User::factory()->create();
+
+    Transaction::factory()->for($user)->buy()->create();
+    $sell = Transaction::factory()->for($user)->sell()->create();
+
+    Sanctum::actingAs($user);
+
+    $response = $this->getJson('/api/transactions?type=SELL')->assertOk();
+
+    $ids = collect($response->json('data'))->pluck('id')->all();
+
+    expect($ids)->toBe([$sell->id]);
+    expect($response->json('data.0.type'))->toBe(TransactionType::SELL->value);
+});
+
+test('transactions endpoint rejects invalid type filter', function (): void {
+    $user = User::factory()->create();
+
+    Sanctum::actingAs($user);
+
+    $this->getJson('/api/transactions?type=INVALID')
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['type']);
+});
