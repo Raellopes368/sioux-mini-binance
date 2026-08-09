@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\RefreshTokenRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Services\AuthService;
@@ -26,6 +27,7 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Usuário registrado com sucesso.',
             'token' => $result['token'],
+            'refresh_token' => $result['refresh_token'],
             'user' => new UserResource($result['user']),
         ], 201);
     }
@@ -40,7 +42,20 @@ class AuthController extends Controller
         return response()->json([
             'message' => 'Login realizado com sucesso.',
             'token' => $result['token'],
+            'refresh_token' => $result['refresh_token'],
             'user' => new UserResource($result['user']),
+        ]);
+    }
+
+    public function refresh(RefreshTokenRequest $request): JsonResponse
+    {
+        $result = $this->authService->refresh(
+            $request->string('refresh_token')->toString(),
+        );
+
+        return response()->json([
+            'token' => $result['token'],
+            'refresh_token' => $result['refresh_token'],
         ]);
     }
 

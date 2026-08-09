@@ -54,6 +54,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Access / Refresh Token Lifetimes
+    |--------------------------------------------------------------------------
+    |
+    | Access tokens are short-lived Sanctum personal access tokens.
+    | Refresh tokens are stored hashed and rotated on each use.
+    |
+    */
+
+    'access_token_expiration' => (int) env('SANCTUM_ACCESS_TOKEN_EXPIRATION', 60),
+
+    'refresh_token_expiration' => (int) env('SANCTUM_REFRESH_TOKEN_EXPIRATION', 60 * 24 * 30),
+
+    /*
+    |--------------------------------------------------------------------------
     | Token Prefix
     |--------------------------------------------------------------------------
     |
