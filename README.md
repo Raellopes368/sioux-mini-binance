@@ -14,7 +14,7 @@ Plataforma simplificada de trading de Bitcoin (teste técnico), com API Laravel 
 
 | Camada  | Tecnologias                                              |
 | ------- | -------------------------------------------------------- |
-| Backend | PHP 8.4+, Laravel 13, PostgreSQL, Sanctum, Redis, Docker |
+| Backend | PHP 8.4+, Laravel 13, PostgreSQL, Sanctum, Scramble, Redis, Docker |
 | Mobile  | React Native, Expo, TypeScript, NativeWind               |
 
 ---
@@ -84,6 +84,7 @@ docker compose --env-file backend/.env up -d
 Isso sobe:
 
 - API Laravel em `http://localhost:8000`
+- Docs OpenAPI (Scramble) em `http://localhost:8000/docs/api`
 - PostgreSQL (`liqd` / `liqd` / `secret`)
 - Redis
 
@@ -115,6 +116,11 @@ php artisan serve
 ```
 
 API: `http://localhost:8000`
+
+Documentação interativa (Scramble / OpenAPI): [`http://localhost:8000/docs/api`](http://localhost:8000/docs/api)  
+Spec JSON: [`http://localhost:8000/docs/api.json`](http://localhost:8000/docs/api.json)
+
+Disponível apenas com `APP_ENV=local` (padrão do `.env`).
 
 ---
 
