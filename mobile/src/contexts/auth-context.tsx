@@ -7,13 +7,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { DeviceEventEmitter } from "react-native";
 
 import { api } from "@/services/api";
 import { authService } from "@/services/auth.service";
 import {
+  clearAuthTokens,
   getAuthToken,
-  removeAuthToken,
-  saveAuthToken,
+  saveAuthTokens,
 } from "@/services/secure-storage";
 import type { LoginPayload, RegisterPayload } from "@/types/auth";
 import type { User } from "@/types/user";
@@ -40,6 +41,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
 
+  const clearSession = useCallback(async () => {
+    await clearAuthTokens();
+    delete api.defaults.headers.common.Authorization;
+    setUser(null);
+  }, []);
+
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener("auth:logout", () => {
+      setUser(null);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   useEffect(() => {
     async function loadUser() {
       try {
@@ -56,19 +73,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setUser(user);
       } catch (error) {
         console.error("Failed to restore session:", error);
-
-        await removeAuthToken();
-
-        delete api.defaults.headers.common.Authorization;
-
-        setUser(null);
+        await clearSession();
       } finally {
         setIsInitializing(false);
       }
     }
 
     void loadUser();
-  }, []);
+  }, [clearSession]);
 
   const signIn = useCallback(async (payload: LoginPayload) => {
     setIsLoading(true);
@@ -76,7 +88,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const session = await authService.login(payload);
 
-      await saveAuthToken(session.token);
+      await saveAuthTokens(session.token, session.refresh_token);
 
       api.defaults.headers.common.Authorization = `Bearer ${session.token}`;
 
@@ -92,7 +104,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const session = await authService.register(payload);
 
-      await saveAuthToken(session.token);
+      await saveAuthTokens(session.token, session.refresh_token);
 
       api.defaults.headers.common.Authorization = `Bearer ${session.token}`;
 
@@ -110,14 +122,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (error) {
       console.error("Failed to logout from server:", error);
     } finally {
-      await removeAuthToken();
-
-      delete api.defaults.headers.common.Authorization;
-
-      setUser(null);
+      await clearSession();
       setIsLoading(false);
     }
-  }, []);
+  }, [clearSession]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
