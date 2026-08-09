@@ -13,6 +13,8 @@ class TransactionService
         return $user->transactions()
             ->when($type !== null, fn ($query) => $query->where('type', $type))
             ->latest('id')
-            ->paginate(15);
+            ->paginate(15)
+            ->withPath('/transactions')
+            ->withQueryString();
     }
 }

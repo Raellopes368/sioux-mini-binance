@@ -72,3 +72,17 @@ test('transactions endpoint rejects invalid type filter', function (): void {
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['type']);
 });
+
+test('transactions endpoint returns relative pagination links', function (): void {
+    $user = User::factory()->create();
+
+    Transaction::factory()->for($user)->buy()->count(16)->create();
+
+    Sanctum::actingAs($user);
+
+    $response = $this->getJson('/api/transactions?type=BUY')->assertOk();
+
+    expect($response->json('links.first'))->toBe('/transactions?type=BUY&page=1');
+    expect($response->json('links.next'))->toBe('/transactions?type=BUY&page=2');
+    expect($response->json('meta.path'))->toBe('/transactions');
+});
