@@ -6,6 +6,7 @@ use App\Enums\TransactionType;
 use App\Http\Requests\Transaction\IndexRequest;
 use App\Http\Resources\TransactionResource;
 use App\Services\TransactionService;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class TransactionController extends Controller
@@ -22,5 +23,12 @@ class TransactionController extends Controller
         );
 
         return TransactionResource::collection($transactions);
+    }
+
+    public function show(Request $request, int $id): TransactionResource
+    {
+        $transaction = $this->transactionService->find($request->user(), $id);
+
+        return new TransactionResource($transaction);
     }
 }

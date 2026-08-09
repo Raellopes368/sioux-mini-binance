@@ -86,3 +86,36 @@ test('transactions endpoint returns relative pagination links', function (): voi
     expect($response->json('links.next'))->toBe('/transactions?type=BUY&page=2');
     expect($response->json('meta.path'))->toBe('/transactions');
 });
+
+test('transaction show returns authenticated user transaction', function (): void {
+    $user = User::factory()->create();
+    $transaction = Transaction::factory()->for($user)->buy()->create();
+
+    Sanctum::actingAs($user);
+
+    $this->getJson("/api/transactions/{$transaction->id}")
+        ->assertOk()
+        ->assertJsonPath('data.id', $transaction->id)
+        ->assertJsonPath('data.type', TransactionType::BUY->value)
+        ->assertJsonPath('data.btc_amount', $transaction->btc_amount)
+        ->assertJsonPath('data.brl_amount', $transaction->brl_amount)
+        ->assertJsonPath('data.btc_price', $transaction->btc_price);
+});
+
+test('transaction show returns 404 for another users transaction', function (): void {
+    $user = User::factory()->create();
+    $other = User::factory()->create();
+    $transaction = Transaction::factory()->for($other)->buy()->create();
+
+    Sanctum::actingAs($user);
+
+    $this->getJson("/api/transactions/{$transaction->id}")->assertNotFound();
+});
+
+test('transaction show returns 404 when transaction does not exist', function (): void {
+    $user = User::factory()->create();
+
+    Sanctum::actingAs($user);
+
+    $this->getJson('/api/transactions/999999')->assertNotFound();
+});

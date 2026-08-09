@@ -22,4 +22,5 @@ Route::middleware('auth:sanctum')->group(function (): void {
     Route::post('/trade/sell', [TradeController::class, 'sell']);
 
     Route::get('/transactions', [TransactionController::class, 'index']);
+    Route::get('/transactions/{id}', [TransactionController::class, 'show']);
 });

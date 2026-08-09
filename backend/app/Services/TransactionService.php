@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\TransactionType;
+use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
@@ -16,5 +17,10 @@ class TransactionService
             ->paginate(15)
             ->withPath('/transactions')
             ->withQueryString();
+    }
+
+    public function find(User $user, int $id): Transaction
+    {
+        return $user->transactions()->findOrFail($id);
     }
 }

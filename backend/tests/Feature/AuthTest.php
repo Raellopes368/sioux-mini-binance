@@ -83,5 +83,6 @@ test('private endpoints require authentication', function (): void {
     $this->postJson('/api/trade/buy', ['amount' => 100])->assertUnauthorized();
     $this->postJson('/api/trade/sell', ['amount' => 0.001])->assertUnauthorized();
     $this->getJson('/api/transactions')->assertUnauthorized();
+    $this->getJson('/api/transactions/1')->assertUnauthorized();
     $this->postJson('/api/logout')->assertUnauthorized();
 });
