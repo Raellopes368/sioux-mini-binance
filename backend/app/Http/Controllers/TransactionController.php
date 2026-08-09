@@ -2,18 +2,24 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\TransactionType;
+use App\Http\Requests\Transaction\IndexRequest;
 use App\Http\Resources\TransactionResource;
-use Illuminate\Http\Request;
+use App\Services\TransactionService;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class TransactionController extends Controller
 {
-    public function index(Request $request): AnonymousResourceCollection
+    public function __construct(
+        private readonly TransactionService $transactionService,
+    ) {}
+
+    public function index(IndexRequest $request): AnonymousResourceCollection
     {
-        $transactions = $request->user()
-            ->transactions()
-            ->latest('id')
-            ->paginate(15);
+        $transactions = $this->transactionService->list(
+            $request->user(),
+            $request->enum('type', TransactionType::class),
+        );
 
         return TransactionResource::collection($transactions);
     }
